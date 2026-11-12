@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: medi
+      POSTGRES_PASSWORD: medi
+      POSTGRES_DB: mediconsult
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["8026:8025", "1026:1025"]
+volumes:
+  pgdata:
