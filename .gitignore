@@ -7,3 +7,4 @@ uploads/
 .env
 api/.env
 .DS_Store
+*.tsbuildinfo
