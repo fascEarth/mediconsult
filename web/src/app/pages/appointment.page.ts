@@ -7,6 +7,7 @@ import { Auth, errorText } from '../core/auth';
 import type { Appointment, PrescriptionItem } from '../core/types';
 import { Chat } from '../shared/chat';
 import { MoneyPipe, StatusBadge } from '../shared/ui';
+import { environment } from '../../environments/environment';
 
 const emptyItem = (): PrescriptionItem => ({ medicine: '', dosage: '', frequency: '', duration: '', instructions: '' });
 
@@ -15,7 +16,7 @@ const emptyItem = (): PrescriptionItem => ({ medicine: '', dosage: '', frequency
   template: `
     @if (a(); as a) {
       <div class="page">
-        @if (booked()) {<div class="banner ok">✓ Booked! A confirmation email is on its way.</div>}
+        @if (booked()) {<div class="banner ok">✓ Booked! {{ demo ? 'In the live product a confirmation email is sent.' : 'A confirmation email is on its way.' }}</div>}
         <div class="row-between">
           <div>
             <h1>{{ isDoctor() ? a.patient.name : a.doctor.name }}</h1>
@@ -120,6 +121,7 @@ export default class AppointmentPage {
   error = signal('');
   msg = signal('');
   booked = () => this.bookedParam() === '1';
+  demo = environment.demo;
   isDoctor = () => this.auth.role() === 'DOCTOR';
   isAdmin = () => this.auth.role() === 'ADMIN';
   emptyItem = emptyItem;

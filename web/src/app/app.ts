@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Api } from './core/api';
 import { Auth } from './core/auth';
+import { environment } from '../environments/environment';
 
 @Component({
   selector: 'app-root',
@@ -38,7 +39,7 @@ import { Auth } from './core/auth';
     <main><router-outlet /></main>
     <footer class="foot">
       <div>© {{ year }} MediConsult by Fascinora</div>
-      <div class="links"><a routerLink="/legal/privacy">Privacy</a><a routerLink="/legal/terms">Terms</a><a routerLink="/legal/telemedicine">Telemedicine consent</a><a routerLink="/register/doctor">Join as a doctor</a></div>
+      <div class="links"><a routerLink="/legal/privacy">Privacy</a><a routerLink="/legal/terms">Terms</a><a routerLink="/legal/telemedicine">Telemedicine consent</a><a routerLink="/register/doctor">Join as a doctor</a>@if (demo) {<button class="link" (click)="resetDemo()">Reset demo data</button>}</div>
       <p class="muted small">Not for emergencies. If you have a medical emergency, call your local emergency number (112 in India) immediately.</p>
     </footer>
   `,
@@ -48,6 +49,14 @@ export class App implements OnInit {
   auth = inject(Auth);
   open = signal(false);
   year = new Date().getFullYear();
+  demo = environment.demo;
+
+  async resetDemo() {
+    if (!confirm('Reset all demo data in this browser?')) return;
+    (await import('./demo/medi-demo-backend')).resetDemo();
+    sessionStorage.clear();
+    location.href = '/';
+  }
 
   ngOnInit() {
     void this.api.loadConfig().catch(() => undefined);

@@ -22,6 +22,7 @@ import { Auth, errorText } from '../core/auth';
             <button type="button" class="link" (click)="fill('doctor@mediconsult.demo', 'Doctor@12345')">Doctor</button>
             <button type="button" class="link" (click)="fill('admin@mediconsult.demo', 'Admin@12345')">Admin</button>
           </div>
+          <p class="muted small">Tip: sign in as the patient in one tab and the doctor in another, then open the consultation to chat live. Data stays in your browser.</p>
         }
       </form>
     </div>

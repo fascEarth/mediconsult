@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import { Api } from '../core/api';
 import { Auth, errorText } from '../core/auth';
 import { config } from '../core/config';
+import { environment } from '../../environments/environment';
 import type { ChatMessage } from '../core/types';
 
 /** Encrypted consultation chat: history over REST, live delivery over WebSocket. */
@@ -36,6 +37,7 @@ export class Chat implements OnDestroy {
   private api = inject(Api);
   private auth = inject(Auth);
   private socket?: Socket;
+  private demoOff?: () => void;
   private log = viewChild<ElementRef<HTMLDivElement>>('log');
   messages = signal<ChatMessage[]>([]);
   error = signal('');
@@ -53,6 +55,17 @@ export class Chat implements OnDestroy {
       this.scroll();
     } catch (e) {
       this.error.set(errorText(e));
+    }
+    if (environment.demo) {
+      const demo = await import('../demo/medi-demo-backend');
+      this.demoOff?.();
+      this.demoOff = demo.onChat((m) => {
+        if (m.appointmentId === id && !this.messages().some((x) => x.id === m.id)) {
+          this.messages.update((list) => [...list, m]);
+          this.scroll();
+        }
+      });
+      return;
     }
     this.socket = io(`${config.wsUrl}/chat`, { auth: { token: this.auth.session()?.accessToken }, transports: ['websocket'] });
     this.socket.on('connect', () => this.socket!.emit('join', { appointmentId: id }));
@@ -85,6 +98,7 @@ export class Chat implements OnDestroy {
   }
 
   ngOnDestroy() {
+    this.demoOff?.();
     this.socket?.disconnect();
   }
 }

@@ -177,3 +177,20 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
   .page { padding: 20px 14px; }
   .appt { flex-wrap: wrap; }
 }
+
+/* demo video room */
+.demo-room { position: absolute; inset: 0; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, #12302c, #0b1412 70%); color: #e6f2ef; }
+.demo-room .remote { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 0 20px; }
+.demo-room .ring { width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; background: #14b8a6; font-size: 2.4rem; font-weight: 700; color: #fff; box-shadow: 0 0 0 0 rgb(20 184 166 / .6); animation: talk 2.2s infinite; }
+@keyframes talk { 0% { box-shadow: 0 0 0 0 rgb(20 184 166 / .55); } 70% { box-shadow: 0 0 0 26px rgb(20 184 166 / 0); } 100% { box-shadow: 0 0 0 0 rgb(20 184 166 / 0); } }
+.demo-room .remote small { opacity: .7; max-width: 340px; }
+.demo-room .local { position: absolute; right: 16px; top: 16px; width: 200px; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; background: #1f2d2a; display: grid; place-items: center; border: 1px solid #2f4a45; }
+.demo-room .local video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.demo-room .local .you { font-size: 1.6rem; font-weight: 700; opacity: .8; }
+.demo-room .local .label { position: absolute; left: 8px; bottom: 6px; font-size: 11px; opacity: .85; }
+.demo-room .controls { position: absolute; bottom: 56px; display: flex; gap: 14px; }
+.demo-room .ctl { width: 52px; height: 52px; border-radius: 50%; border: 0; background: #ffffff22; color: #fff; font-size: 20px; cursor: pointer; }
+.demo-room .ctl.off { background: #ffffff10; opacity: .7; }
+.demo-room .ctl.end { background: #dc2626; }
+.demo-room .demo-note { position: absolute; bottom: 14px; font-size: 12px; opacity: .65; text-align: center; padding: 0 16px; }
+@media (max-width: 900px) { .demo-room .local { width: 120px; } }

@@ -1,5 +1,6 @@
 import { Component, effect, ElementRef, inject, input, OnDestroy, signal, viewChild } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
+import { environment } from '../../environments/environment';
 import { Api } from '../core/api';
 import { Auth, errorText } from '../core/auth';
 import { Chat } from '../shared/chat';
@@ -21,7 +22,26 @@ declare global {
   template: `
     <div class="consult">
       <div class="video" #video>
-        @if (error()) {
+        @if (demoRoom(); as room) {
+          <div class="demo-room">
+            <div class="tile remote">
+              <div class="ring"><span>{{ initials(room.peerName) }}</span></div>
+              <b>{{ room.peerName }}</b>
+              <small>Demo participant · open another tab as {{ isDoctor() ? 'the patient' : 'the doctor' }} to chat live</small>
+            </div>
+            <div class="tile local">
+              <video #cam autoplay playsinline muted [hidden]="!camOn()"></video>
+              @if (!camOn()) {<span class="you">{{ initials(room.displayName) }}</span>}
+              <small class="label">You · {{ room.displayName }}</small>
+            </div>
+            <div class="controls">
+              <button class="ctl" [class.off]="muted()" (click)="muted.set(!muted())" [attr.aria-label]="muted() ? 'Unmute' : 'Mute'">{{ muted() ? '🔇' : '🎙️' }}</button>
+              <button class="ctl" [class.off]="!camOn()" (click)="toggleCam()" [attr.aria-label]="camOn() ? 'Camera off' : 'Camera on'">{{ camOn() ? '📷' : '📷̸' }}</button>
+              <button class="ctl end" (click)="leave()" aria-label="Leave call">✕</button>
+            </div>
+            <p class="demo-note">Demo room. In production this is an encrypted Jitsi video call that opens only for the patient and doctor.</p>
+          </div>
+        } @else if (error()) {
           <div class="video-msg"><p class="error">{{ error() }}</p><a class="btn" [routerLink]="['/appointments', id()]">Back to appointment</a></div>
         } @else if (!ready()) {
           <div class="video-msg"><p>Connecting securely…</p></div>
@@ -41,6 +61,13 @@ export default class ConsultPage implements OnDestroy {
   private host = viewChild.required<ElementRef<HTMLDivElement>>('video');
   private jitsi?: JitsiApi;
   ready = signal(false);
+  demoRoom = signal<{ displayName: string; peerName: string } | null>(null);
+  muted = signal(false);
+  camOn = signal(false);
+  private stream?: MediaStream;
+  private router = inject(Router);
+  private cam = viewChild<ElementRef<HTMLVideoElement>>('cam');
+  initials = (n: string) => n.replace(/^Dr\.\s*/, '').split(' ').map((p) => p[0]).slice(0, 2).join('');
   error = signal('');
   isDoctor = () => this.auth.role() === 'DOCTOR';
 
@@ -51,6 +78,10 @@ export default class ConsultPage implements OnDestroy {
   private async start(id: string) {
     try {
       const room = await this.api.join(id);
+      if (environment.demo) {
+        this.demoRoom.set({ displayName: room.displayName, peerName: (room as unknown as { peerName: string }).peerName });
+        return;
+      }
       await this.loadScript(room.domain);
       this.jitsi?.dispose();
       this.jitsi = new window.JitsiMeetExternalAPI!(room.domain, {
@@ -89,7 +120,30 @@ export default class ConsultPage implements OnDestroy {
     });
   }
 
+  async toggleCam() {
+    if (this.camOn()) {
+      this.stream?.getTracks().forEach((t) => t.stop());
+      this.camOn.set(false);
+      return;
+    }
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      this.camOn.set(true);
+      setTimeout(() => {
+        const v = this.cam()?.nativeElement;
+        if (v) v.srcObject = this.stream!;
+      });
+    } catch {
+      this.error.set('Camera not available or permission denied.');
+    }
+  }
+
+  leave() {
+    void this.router.navigate(['/appointments', this.id()]);
+  }
+
   ngOnDestroy() {
+    this.stream?.getTracks().forEach((t) => t.stop());
     this.jitsi?.dispose();
   }
 }
