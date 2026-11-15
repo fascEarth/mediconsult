@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { config } from './config';
-import type { Appointment, ChatMessage, Doctor, MedicalRecord, Prescription, PublicConfig } from './types';
+import type { AdminAnalytics, AdminAppointment, AppNotification, Appointment, AuditEntry, ChatMessage, Doctor, DoctorInsights, HealthSummary, MedicalRecord, Medication, Prescription, PublicConfig, Vital, VitalType } from './types';
 
 @Injectable({ providedIn: 'root' })
 export class Api {
@@ -70,7 +70,25 @@ export class Api {
   exportData = () => this.get<unknown>('/me/export');
   requestDeletion = () => this.post<{ message: string }>('/me/delete-request');
 
+  // health
+  vitals = (q: { type?: VitalType; days?: number } = {}) => this.get<Vital[]>('/me/vitals', q);
+  addVital = (body: { type: VitalType; value: Record<string, number | string>; recordedAt?: string }) => this.post<Vital>('/me/vitals', body);
+  deleteVital = (id: string) => firstValueFrom(this.http.delete(`${this.b}/me/vitals/${id}`));
+  medications = () => this.get<Medication[]>('/me/medications');
+  healthSummary = () => this.get<HealthSummary>('/me/health-summary');
+  consultationVitals = (appointmentId: string) => this.get<Vital[]>(`/appointments/${appointmentId}/vitals`);
+
+  // notifications
+  notifications = () => this.get<{ unread: number; items: AppNotification[] }>('/me/notifications');
+  markNotificationsRead = (ids?: string[]) => this.post<{ unread: number; items: AppNotification[] }>('/me/notifications/read', { ids });
+
+  // doctor analytics
+  doctorInsights = () => this.get<DoctorInsights>('/doctors/me/insights');
+
   // admin
+  adminAnalytics = () => this.get<AdminAnalytics>('/admin/analytics');
+  adminAppointments = (q: { status?: string; search?: string; page?: number }) => this.get<{ total: number; page: number; pageSize: number; items: AdminAppointment[] }>('/admin/appointments', q);
+  adminAudit = (entityId?: string) => this.get<AuditEntry[]>('/admin/audit', { entityId });
   adminStats = () => this.get<Record<string, number>>('/admin/stats');
   adminDoctors = (status?: string) => this.get<{ id: string; name: string; email: string; status: string; specialty: string; qualifications: string; registrationNumber: string; registrationCouncil: string; experienceYears: number; createdAt: string }[]>('/admin/doctors', { status });
   setDoctorStatus = (id: string, status: 'VERIFIED' | 'SUSPENDED', note?: string) => this.post(`/admin/doctors/${id}/status`, { status, note });

@@ -23,7 +23,10 @@ interface Appt {
 interface Msg { id: string; appointmentId: string; senderId: string; body: string; createdAt: string }
 interface Rec { id: string; patientId: string; title: string; fileName: string; mimeType: string; sizeBytes: number; dataUrl: string; createdAt: string }
 interface Profile { dateOfBirth?: string; gender?: string; bloodGroup?: string; emergencyContact?: string; medicalSummary: { allergies: string; conditions: string; medications: string } }
-interface Db { v: number; users: User[]; doctors: Doctor[]; appts: Appt[]; messages: Msg[]; records: Rec[]; profiles: Record<string, Profile> }
+interface Notif { id: string; userId: string; type: string; title: string; body: string; link?: string; readAt?: string | null; createdAt: string }
+interface DVital { id: string; patientId: string; type: string; value: Record<string, number | string>; recordedAt: string }
+interface Db { v: number; users: User[]; doctors: Doctor[]; appts: Appt[]; messages: Msg[]; records: Rec[]; profiles: Record<string, Profile>; notifications?: Notif[]; vitals?: DVital[]; audit?: AuditRow[] }
+interface AuditRow { id: string; actorId: string; actorRole: string; action: string; entity: string; entityId: string; createdAt: string }
 
 class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -92,13 +95,123 @@ function seed(): Db {
     { id: uid(), appointmentId: 'a-past', senderId: 'd-kavya', body: 'How are you feeling today, Ravi?', createdAt: iso(new Date(past.getTime() + 2 * 86_400_000)) },
     { id: uid(), appointmentId: 'a-past', senderId: 'u-pat', body: 'Much better, fever is gone. Thank you doctor!', createdAt: iso(new Date(past.getTime() + 2 * 86_400_000 + 600_000)) },
   ];
-  return { v: 1, users, doctors, appts, messages, records: [], profiles: { 'u-pat': { gender: 'male', bloodGroup: 'O+', dateOfBirth: '1990-04-12', medicalSummary: { allergies: 'None known', conditions: 'Mild hypertension', medications: 'Telmisartan 40 mg once daily' } } } };
+  const extra = history(users, doctors, appts);
+  return { v: 1, users, doctors, appts, messages, records: [], notifications: extra.notifications, vitals: extra.vitals, audit: [], profiles: { 'u-pat': { gender: 'male', bloodGroup: 'O+', dateOfBirth: '1990-04-12', medicalSummary: { allergies: 'None known', conditions: 'Mild hypertension', medications: 'Telmisartan 40 mg once daily' } } } };
+}
+
+/** ~10 weeks of fictional activity so dashboards and charts have something to show. */
+function history(users: User[], doctors: Doctor[], appts: Appt[]) {
+  let seed = 20261115;
+  const rand = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const pick = <T,>(a: T[]) => a[Math.floor(rand() * a.length)];
+  const names = [['Aarav', 'Sharma'], ['Diya', 'Iyer'], ['Vihaan', 'Reddy'], ['Ananya', 'Nair'], ['Kabir', 'Gupta'], ['Meera', 'Menon'], ['Rohan', 'Das'], ['Saanvi', 'Pillai'], ['Aditya', 'Joshi'], ['Pooja', 'Bose'], ['Farhan', 'Khan'], ['Lakshmi', 'Rao']];
+  const pids = names.map(([f, l], i) => {
+    const id = `u-p${i}`;
+    users.push({ id, email: `${f}.${l}@patients.mediconsult.demo`.toLowerCase(), password: 'Patient@12345', role: 'PATIENT', firstName: f, lastName: l, timezone: TZ });
+    return id;
+  });
+  const comments = ['Very patient and explained everything clearly.', 'Quick diagnosis and the prescription worked.', 'Felt heard. Would consult again.', 'Good advice, video was clear.', undefined];
+  const used = new Set(appts.map((a) => `${a.doctorId}|${a.startsAt}`));
+  const hours = [9, 10, 11, 12, 16, 17, 18, 19, 20];
+  const now = Date.now();
+  for (const d of doctors.filter((x) => x.status === 'VERIFIED')) {
+    const busy = d.userId === 'd-kavya' ? 1.5 : 0.7;
+    for (let back = 70; back >= -5; back--) {
+      if (back === 0) continue;
+      const n = Math.round(busy * (0.4 + rand() * 1.4));
+      for (let k = 0; k < n; k++) {
+        const start = new Date(now - back * 86_400_000);
+        start.setHours(pick(hours), pick([0, 15, 30, 45]), 0, 0);
+        const key = `${d.userId}|${iso(start)}`;
+        if (used.has(key)) continue;
+        used.add(key);
+        const r = rand();
+        const status: Status = back < 0 ? 'CONFIRMED' : r < 0.84 ? 'COMPLETED' : r < 0.9 ? 'NO_SHOW' : 'CANCELLED';
+        const end = new Date(start.getTime() + 15 * 60_000);
+        const a: Appt = { id: `h-${appts.length}`, reference: `MC-H${String(appts.length).padStart(5, '0')}`, patientId: pick(pids), doctorId: d.userId, startsAt: iso(start), endsAt: iso(end), status,
+          reason: 'Consultation', feeMinor: d.feeMinor, currency: 'INR', recordIds: [], completedAt: status === 'COMPLETED' ? iso(end) : undefined };
+        if (status === 'COMPLETED' && rand() < 0.6) {
+          const x = rand();
+          a.review = { rating: x < 0.62 ? 5 : x < 0.9 ? 4 : 3, comment: pick(comments), createdAt: iso(new Date(end.getTime() + 3_600_000)) };
+        }
+        appts.push(a);
+      }
+    }
+    const reviews = appts.filter((a) => a.doctorId === d.userId && a.review);
+    if (reviews.length) {
+      d.ratingAvg = reviews.reduce((s, a) => s + (a.review?.rating ?? 0), 0) / reviews.length;
+      d.ratingCount = reviews.length;
+    }
+  }
+  // Ravi's vitals: blood pressure improving over the last weeks, weekly weight and fasting sugar.
+  const vitals: DVital[] = [];
+  for (let back = 70; back >= 0; back -= 3) {
+    const at = new Date(now - back * 86_400_000);
+    at.setHours(8, Math.floor(rand() * 50), 0, 0);
+    const improve = back < 35 ? (35 - back) * 0.35 : 0;
+    vitals.push({ id: uid(), patientId: 'u-pat', type: 'BP', value: { systolic: Math.round(146 - improve + (rand() - 0.5) * 8), diastolic: Math.round(93 - improve * 0.5 + (rand() - 0.5) * 6) }, recordedAt: iso(at) });
+    vitals.push({ id: uid(), patientId: 'u-pat', type: 'HR', value: { bpm: Math.round(78 + (rand() - 0.5) * 8) }, recordedAt: iso(at) });
+    if (back % 7 === 0) {
+      vitals.push({ id: uid(), patientId: 'u-pat', type: 'WEIGHT', value: { kg: Math.round((82.5 - (70 - back) * 0.03) * 10) / 10 }, recordedAt: iso(at) });
+      vitals.push({ id: uid(), patientId: 'u-pat', type: 'GLUCOSE', value: { mgdl: Math.round(104 + (rand() - 0.5) * 14), context: 'fasting' }, recordedAt: iso(at) });
+      vitals.push({ id: uid(), patientId: 'u-pat', type: 'SPO2', value: { percent: 97 + Math.floor(rand() * 3) }, recordedAt: iso(at) });
+    }
+  }
+  const notifications: Notif[] = [
+    { id: uid(), userId: 'u-pat', type: 'appointment.confirmed', title: 'Consultation confirmed', body: 'With Dr. Kavya Raman · MC-DEMO-NOW001', link: '/appointments/a-now', createdAt: iso(new Date(now - 3_600_000)) },
+    { id: uid(), userId: 'u-pat', type: 'prescription.issued', title: 'Prescription ready', body: 'For consultation MC-DEMO-PAST01', link: '/prescription/a-past', readAt: iso(new Date(now - 5 * 86_400_000)), createdAt: iso(new Date(now - 6 * 86_400_000)) },
+    { id: uid(), userId: 'd-kavya', type: 'appointment.booked', title: 'New consultation booked', body: 'Ravi Kumar · MC-DEMO-NOW001', link: '/appointments/a-now', createdAt: iso(new Date(now - 3_600_000)) },
+  ];
+  return { vitals, notifications };
+}
+
+// Reference-range flags (informational), duration parsing — mirror the API.
+function vitalFlag(type: string, v: Record<string, number | string>): 'high' | 'low' | null {
+  const n = (k: string) => Number(v[k]);
+  switch (type) {
+    case 'BP': return n('systolic') >= 140 || n('diastolic') >= 90 ? 'high' : n('systolic') < 90 || n('diastolic') < 60 ? 'low' : null;
+    case 'HR': return n('bpm') > 100 ? 'high' : n('bpm') < 50 ? 'low' : null;
+    case 'GLUCOSE': return n('mgdl') >= (v['context'] === 'fasting' ? 126 : 200) ? 'high' : n('mgdl') < 70 ? 'low' : null;
+    case 'TEMP': return n('celsius') >= 38 ? 'high' : n('celsius') < 35 ? 'low' : null;
+    case 'SPO2': return n('percent') < 94 ? 'low' : null;
+    default: return null;
+  }
+}
+function durationDays(text?: string): number | null {
+  if (!text || /(ongoing|continue|long[- ]term|sos|as needed)/i.test(text)) return null;
+  const m = text.toLowerCase().match(/(\d+(?:\.\d+)?)\s*(d|day|days|w|wk|week|weeks|m|mo|month|months)?\b/);
+  if (!m) return null;
+  const unit = m[2] ?? 'd';
+  return Math.round(Number(m[1]) * (unit.startsWith('w') ? 7 : unit.startsWith('m') ? 30 : 1));
+}
+const vitalView = (v: DVital) => ({ id: v.id, type: v.type, value: v.value, recordedAt: v.recordedAt, flag: vitalFlag(v.type, v.value) });
+function notify(db: Db, userId: string, type: string, title: string, body: string, link?: string) {
+  (db.notifications ??= []).push({ id: uid(), userId, type, title, body, link, readAt: null, createdAt: iso(new Date()) });
+}
+function audit(db: Db, u: User, action: string, entity: string, entityId: string) {
+  const a = (db.audit ??= []);
+  a.push({ id: String(a.length + 1), actorId: u.id, actorRole: u.role, action, entity, entityId, createdAt: iso(new Date()) });
+  if (a.length > 400) a.splice(0, a.length - 400);
+}
+function medications(db: Db, patientId: string) {
+  const now = Date.now();
+  return db.appts.filter((a) => a.patientId === patientId && a.prescription).flatMap((a) => {
+    const rx = a.prescription as { diagnosis?: string; items?: { medicine: string; dosage: string; frequency: string; duration: string; instructions?: string }[]; issuedAt: string };
+    return (rx.items ?? []).map((it) => {
+      const days = durationDays(it.duration);
+      const endsAt = days === null ? null : iso(new Date(new Date(rx.issuedAt).getTime() + days * 86_400_000));
+      return { ...it, diagnosis: rx.diagnosis, issuedAt: rx.issuedAt, endsAt, active: endsAt === null || new Date(endsAt).getTime() > now, appointmentId: a.id, doctor: `Dr. ${name(db, a.doctorId)}` };
+    });
+  }).sort((x, y) => Number(y.active) - Number(x.active));
 }
 
 function load(): Db {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as Db;
+    if (raw) {
+      const db = JSON.parse(raw) as Db;
+      if (db.vitals) return db; // created before analytics existed → reseed below
+    }
   } catch { /* fresh */ }
   const db = seed();
   save(db);
@@ -259,6 +372,7 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
   if (seg[0] === 'doctors' && seg[1] === 'me') {
     role(u, 'DOCTOR');
     const d = db.doctors.find((x) => x.userId === u.id)!;
+    if (seg[2] === 'insights') return insights(db, u, d);
     if (seg[2] === 'profile' && method === 'PUT') Object.assign(d, Object.fromEntries(Object.entries(b).filter(([k]) => ['bio', 'feeMinor', 'languages', 'slotMinutes'].includes(k))));
     if (seg[2] === 'availability') d.availability = (b['rules'] as Doctor['availability']) ?? [];
     if (seg[2] === 'time-off' && method === 'POST') d.timeOff.push({ id: uid(), startsAt: String(b['startsAt']), endsAt: String(b['endsAt']), reason: b['reason'] as string | undefined });
@@ -303,12 +417,17 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
       if (a.status === 'PENDING_PAYMENT') {
         a.status = 'CONFIRMED';
         a.holdExpiresAt = null;
+        notify(db, a.patientId, 'appointment.confirmed', 'Consultation confirmed', `With Dr. ${name(db, a.doctorId)} · ${a.reference}`, `/appointments/${a.id}`);
+        notify(db, a.doctorId, 'appointment.booked', 'New consultation booked', `${name(db, a.patientId)} · ${a.reference}`, `/appointments/${a.id}`);
+        audit(db, u, 'payment.succeeded', 'appointment', a.id);
       }
       return apptView(db, a, u);
     }
     if (action === 'cancel') {
       if (!['PENDING_PAYMENT', 'CONFIRMED'].includes(a.status)) throw new ApiError(400, 'This appointment cannot be cancelled');
       a.status = 'CANCELLED';
+      notify(db, u.id === a.patientId ? a.doctorId : a.patientId, 'appointment.cancelled', 'Consultation cancelled', `${a.reference} was cancelled`, `/appointments/${a.id}`);
+      audit(db, u, 'appointment.cancel', 'appointment', a.id);
       return apptView(db, a, u);
     }
     if (action === 'join') {
@@ -319,6 +438,11 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
         peerName: u.role === 'DOCTOR' ? name(db, a.patientId) : `Dr. ${name(db, a.doctorId)}` };
     }
     const doctorOnly = () => { if (a.doctorId !== u.id) throw new ApiError(403, 'Only the treating doctor can do this'); };
+    if (action === 'vitals') {
+      doctorOnly();
+      audit(db, u, 'vitals.read', 'patient', a.patientId);
+      return (db.vitals ?? []).filter((v) => v.patientId === a.patientId).sort((x, y) => x.recordedAt.localeCompare(y.recordedAt)).map(vitalView);
+    }
     if (action === 'notes') {
       doctorOnly();
       if (method === 'PUT') a.notes = b as Record<string, string>;
@@ -327,7 +451,9 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
     if (action === 'prescription') {
       if (method === 'PUT') {
         doctorOnly();
+        notify(db, a.patientId, 'prescription.issued', a.prescription ? 'Prescription updated' : 'Prescription ready', `For consultation ${a.reference}`, `/prescription/${a.id}`);
         a.prescription = { ...b, issuedAt: a.prescription?.issuedAt ?? iso(new Date()) };
+        audit(db, u, 'prescription.write', 'appointment', a.id);
       }
       if (!a.prescription) throw new ApiError(404, 'No prescription yet');
       const d = db.doctors.find((x) => x.userId === a.doctorId)!;
@@ -342,6 +468,8 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
       doctorOnly();
       a.status = 'COMPLETED';
       a.completedAt = iso(new Date());
+      notify(db, a.patientId, 'appointment.completed', 'How was your consultation?', `Rate your consultation ${a.reference}`, `/appointments/${a.id}`);
+      audit(db, u, 'appointment.complete', 'appointment', a.id);
       return apptView(db, a, u);
     }
     if (action === 'no-show') {
@@ -357,6 +485,7 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
       const d = db.doctors.find((x) => x.userId === a.doctorId)!;
       d.ratingAvg = (d.ratingAvg * d.ratingCount + a.review.rating) / (d.ratingCount + 1);
       d.ratingCount++;
+      notify(db, a.doctorId, 'review.received', `New ${a.review.rating}-star review`, `For consultation ${a.reference}`, '/doctor/insights');
       return { ok: true };
     }
     if (action === 'messages') {
@@ -371,9 +500,44 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
     }
   }
 
+  if (seg[0] === 'me' && seg[1] === 'notifications') {
+    const mine = (db.notifications ??= []).filter((n) => n.userId === u.id);
+    if (seg[2] === 'read') {
+      const ids = (b['ids'] as string[] | undefined) ?? [];
+      mine.forEach((n) => { if (!n.readAt && (!ids.length || ids.includes(n.id))) n.readAt = iso(new Date()); });
+    }
+    return { unread: mine.filter((n) => !n.readAt).length, items: [...mine].sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, 30) };
+  }
+
   // patient
   if (seg[0] === 'me') {
     role(u, 'PATIENT');
+    if (seg[1] === 'vitals') {
+      const list = (db.vitals ??= []);
+      if (method === 'POST') {
+        const v: DVital = { id: uid(), patientId: u.id, type: String(b['type']), value: (b['value'] ?? {}) as Record<string, number | string>, recordedAt: String(b['recordedAt'] ?? iso(new Date())) };
+        list.push(v);
+        return vitalView(v);
+      }
+      if (method === 'DELETE') {
+        db.vitals = list.filter((v) => !(v.id === seg[2] && v.patientId === u.id));
+        return { ok: true };
+      }
+      const since = Date.now() - (Number(q.get('days')) || 180) * 86_400_000;
+      const type = q.get('type');
+      return list.filter((v) => v.patientId === u.id && new Date(v.recordedAt).getTime() >= since && (!type || v.type === type)).sort((x, y) => x.recordedAt.localeCompare(y.recordedAt)).map(vitalView);
+    }
+    if (seg[1] === 'medications') return medications(db, u.id);
+    if (seg[1] === 'health-summary') {
+      const latest: Record<string, unknown> = {};
+      (db.vitals ?? []).filter((v) => v.patientId === u.id).sort((x, y) => x.recordedAt.localeCompare(y.recordedAt)).forEach((v) => (latest[v.type] = vitalView(v)));
+      const next = db.appts.filter((a) => a.patientId === u.id && a.status === 'CONFIRMED' && a.endsAt >= iso(new Date())).sort((x, y) => x.startsAt.localeCompare(y.startsAt))[0];
+      return {
+        latest, activeMedications: medications(db, u.id).filter((m) => m.active).length,
+        consultations: db.appts.filter((a) => a.patientId === u.id && a.status === 'COMPLETED').length, records: db.records.filter((r) => r.patientId === u.id).length,
+        next: next ? { id: next.id, startsAt: next.startsAt, doctor: `Dr. ${name(db, next.doctorId)}`, specialty: db.doctors.find((d) => d.userId === next.doctorId)?.specialty } : null,
+      };
+    }
     const p = (db.profiles[u.id] ??= { medicalSummary: { allergies: '', conditions: '', medications: '' } });
     if (seg[1] === 'profile') {
       if (method === 'PUT') {
@@ -427,10 +591,31 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
         return { id: d.userId, name: `Dr. ${du.firstName} ${du.lastName}`, email: du.email, status: d.status, specialty: d.specialty, qualifications: d.qualifications, registrationNumber: d.registrationNumber, registrationCouncil: d.registrationCouncil, experienceYears: d.experienceYears, createdAt: d.createdAt };
       });
     }
+    if (seg[1] === 'analytics') return analytics(db);
+    if (seg[1] === 'audit') {
+      const e = q.get('entityId');
+      return [...(db.audit ?? [])].reverse().filter((x) => !e || x.entityId === e);
+    }
+    if (seg[1] === 'appointments') {
+      const st = q.get('status'), s = (q.get('search') ?? '').toLowerCase(), page = Math.max(1, Number(q.get('page')) || 1);
+      const rows = db.appts
+        .filter((a) => (!st || a.status === st) && (!s || a.reference.toLowerCase().includes(s) || name(db, a.patientId).toLowerCase().includes(s) || name(db, a.doctorId).toLowerCase().includes(s)))
+        .sort((x, y) => y.startsAt.localeCompare(x.startsAt));
+      return {
+        total: rows.length, page, pageSize: 25,
+        items: rows.slice((page - 1) * 25, page * 25).map((a) => ({
+          id: a.id, reference: a.reference, status: a.status, startsAt: a.startsAt, createdAt: a.startsAt, fee: { amountMinor: a.feeMinor, currency: a.currency },
+          payment: ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'NO_SHOW'].includes(a.status) ? 'SUCCEEDED' : null, patient: name(db, a.patientId),
+          doctor: `Dr. ${name(db, a.doctorId)}`, specialty: db.doctors.find((d) => d.userId === a.doctorId)?.specialty,
+        })),
+      };
+    }
     if (seg[1] === 'doctors' && seg[3] === 'status') {
       const d = db.doctors.find((x) => x.userId === seg[2]);
       if (!d) throw new ApiError(404, 'Not found');
       d.status = b['status'] as Doctor['status'];
+      notify(db, d.userId, `doctor.${d.status.toLowerCase()}`, d.status === 'VERIFIED' ? 'Your profile is verified' : 'Your profile was suspended', d.status === 'VERIFIED' ? 'Patients can now book you.' : `Reason: ${b['note'] ?? 'contact support'}`);
+      audit(db, u, `admin.doctor_${d.status.toLowerCase()}`, 'doctor', d.userId);
       if (d.status === 'VERIFIED' && !d.availability.length) d.availability = [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({ weekday, startTime: '00:00', endTime: '23:45' }));
       return { ok: true };
     }
@@ -439,8 +624,86 @@ async function route(db: Db, method: string, path: string, body: unknown, q: URL
   throw new ApiError(404, `No demo route for ${method} ${path}`);
 }
 
+const PAID: Status[] = ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'NO_SHOW'];
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function insights(db: Db, u: User, d: Doctor) {
+  const mine = db.appts.filter((a) => a.doctorId === u.id);
+  const now = new Date();
+  const monday = new Date(now); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const from = new Date(monday.getTime() - 11 * 7 * 86_400_000);
+  const weekly = Array.from({ length: 12 }, (_, i) => ({ week: dayKey(new Date(from.getTime() + i * 7 * 86_400_000)), consultations: 0, earningsMinor: 0, noShows: 0 }));
+  const heat = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
+  for (const a of mine) {
+    const t = new Date(a.startsAt);
+    const i = Math.floor((t.getTime() - from.getTime()) / (7 * 86_400_000));
+    if (i >= 0 && i < 12) {
+      if (a.status === 'COMPLETED') weekly[i].consultations++;
+      if (a.status === 'NO_SHOW') weekly[i].noShows++;
+      if (PAID.includes(a.status)) weekly[i].earningsMinor += a.feeMinor;
+    }
+    if (PAID.includes(a.status)) heat[(t.getDay() + 6) % 7][t.getHours()]++;
+  }
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevCut = new Date(Math.min(prevStart.getTime() + (now.getTime() - monthStart.getTime()), monthStart.getTime()));
+  const inR = (a: Appt, x: Date, y: Date) => new Date(a.startsAt) >= x && new Date(a.startsAt) < y;
+  const done = mine.filter((a) => a.status === 'COMPLETED');
+  const cThis = done.filter((a) => inR(a, monthStart, now)).length, cPrev = done.filter((a) => inR(a, prevStart, prevCut)).length;
+  const paid = mine.filter((a) => PAID.includes(a.status));
+  const eThis = paid.filter((a) => inR(a, monthStart, now)).reduce((s, a) => s + a.feeMinor, 0), ePrev = paid.filter((a) => inR(a, prevStart, prevCut)).reduce((s, a) => s + a.feeMinor, 0);
+  const pct = (x: number, y: number) => (!y ? (x ? null : 0) : Math.round(((x - y) / y) * 100));
+  const fin = mine.filter((a) => ['COMPLETED', 'NO_SHOW'].includes(a.status));
+  const visits = new Map<string, number>();
+  done.forEach((a) => visits.set(a.patientId, (visits.get(a.patientId) ?? 0) + 1));
+  const today0 = new Date(now); today0.setHours(0, 0, 0, 0);
+  const today1 = new Date(today0.getTime() + 86_400_000);
+  const reviews = mine.filter((a) => a.review).sort((x, y) => (y.review!.createdAt).localeCompare(x.review!.createdAt));
+  return {
+    timezone: TZ, currency: d.currency,
+    kpis: {
+      consultationsThisMonth: cThis, consultationsChange: pct(cThis, cPrev), earningsThisMonthMinor: eThis, earningsChange: pct(eThis, ePrev),
+      rating: Math.round(d.ratingAvg * 10) / 10, ratingCount: d.ratingCount, noShowRate: fin.length ? Math.round((fin.filter((a) => a.status === 'NO_SHOW').length / fin.length) * 100) : 0,
+      uniquePatients: visits.size, repeatPatientRate: visits.size ? Math.round(([...visits.values()].filter((n) => n > 1).length / visits.size) * 100) : 0,
+    },
+    weekly, heatmap: heat,
+    ratingDistribution: [5, 4, 3, 2, 1].map((r) => ({ rating: r, count: reviews.filter((a) => a.review!.rating === r).length })),
+    recentReviews: reviews.slice(0, 6).map((a) => { const p = db.users.find((x) => x.id === a.patientId); return { rating: a.review!.rating, comment: a.review!.comment, createdAt: a.review!.createdAt, patient: `${p?.firstName} ${p?.lastName.charAt(0)}.` }; }),
+    today: mine.filter((a) => inR(a, today0, today1) && ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'NO_SHOW'].includes(a.status)).sort((x, y) => x.startsAt.localeCompare(y.startsAt))
+      .map((a) => ({ id: a.id, startsAt: a.startsAt, status: a.status, reference: a.reference, patient: name(db, a.patientId) })),
+  };
+}
+
+function analytics(db: Db) {
+  const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - 29);
+  const daily = Array.from({ length: 30 }, (_, i) => ({ date: dayKey(new Date(start.getTime() + i * 86_400_000)), bookings: 0, revenueMinor: 0 }));
+  const idx = new Map(daily.map((d, i) => [d.date, i]));
+  const recent = db.appts.filter((a) => new Date(a.startsAt) >= start && new Date(a.startsAt) <= new Date());
+  const byStatus: Record<string, number> = {}, bySpec: Record<string, number> = {}, byDoc: Record<string, number> = {};
+  for (const a of recent) {
+    const i = idx.get(dayKey(new Date(a.startsAt)));
+    if (i !== undefined) { daily[i].bookings++; if (PAID.includes(a.status)) daily[i].revenueMinor += a.feeMinor; }
+    byStatus[a.status] = (byStatus[a.status] ?? 0) + 1;
+    if (['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'].includes(a.status)) {
+      const sp = db.doctors.find((d) => d.userId === a.doctorId)?.specialty ?? 'Other';
+      bySpec[sp] = (bySpec[sp] ?? 0) + 1;
+      byDoc[a.doctorId] = (byDoc[a.doctorId] ?? 0) + 1;
+    }
+  }
+  const n = recent.length || 1;
+  return {
+    days: 30, daily, byStatus,
+    bySpecialty: Object.entries(bySpec).map(([specialty, count]) => ({ specialty, count })).sort((x, y) => y.count - x.count),
+    conversionRate: Math.round((recent.filter((a) => PAID.includes(a.status)).length / n) * 100),
+    cancellationRate: Math.round(((byStatus['CANCELLED'] ?? 0) / n) * 100),
+    refundsMinor: recent.filter((a) => a.status === 'CANCELLED').reduce((s, a) => s + a.feeMinor, 0),
+    topDoctors: db.doctors.filter((d) => d.status === 'VERIFIED').map((d) => ({ id: d.userId, name: `Dr. ${name(db, d.userId)}`, specialty: d.specialty, consultations: byDoc[d.userId] ?? 0, rating: Math.round(d.ratingAvg * 10) / 10, ratingCount: d.ratingCount }))
+      .sort((x, y) => y.consultations - x.consultations).slice(0, 6),
+  };
+}
+
 export function handle(req: HttpRequest<unknown>): Observable<HttpEvent<unknown>> {
-  const url = new URL(req.url, location.origin);
+  const url = new URL(req.urlWithParams, location.origin);
   const path = url.pathname.replace(/^.*\/api\/v1/, '');
   const db = load();
   const work = route(db, req.method, path, req.body, url.searchParams, req.headers.get('Authorization')).then((result) => {

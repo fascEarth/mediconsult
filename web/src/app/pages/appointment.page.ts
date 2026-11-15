@@ -6,13 +6,14 @@ import { Api, saveBlob } from '../core/api';
 import { Auth, errorText } from '../core/auth';
 import type { Appointment, PrescriptionItem } from '../core/types';
 import { Chat } from '../shared/chat';
+import { PatientVitals } from '../shared/patient-vitals';
 import { MoneyPipe, StatusBadge } from '../shared/ui';
 import { environment } from '../../environments/environment';
 
 const emptyItem = (): PrescriptionItem => ({ medicine: '', dosage: '', frequency: '', duration: '', instructions: '' });
 
 @Component({
-  imports: [DatePipe, FormsModule, RouterLink, StatusBadge, MoneyPipe, Chat],
+  imports: [DatePipe, FormsModule, RouterLink, StatusBadge, MoneyPipe, Chat, PatientVitals],
   template: `
     @if (a(); as a) {
       <div class="page">
@@ -49,6 +50,7 @@ const emptyItem = (): PrescriptionItem => ({ medicine: '', dosage: '', frequency
             </div>
 
             @if (isDoctor() && ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'].includes(a.status)) {
+              <mc-patient-vitals [appointmentId]="a.id" />
               <div class="card pad">
                 <h3>Clinical notes <small class="muted">(private, encrypted)</small></h3>
                 <div class="grid-2">

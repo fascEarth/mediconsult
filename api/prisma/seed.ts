@@ -147,7 +147,10 @@ async function seedHistory(mainPatientId: string) {
         if (!start) continue;
         const r = rand();
         const status: AppointmentStatus = r < 0.84 ? 'COMPLETED' : r < 0.9 ? 'NO_SHOW' : 'CANCELLED';
-        const patientId = rand() < 0.35 ? pick(patientIds.slice(1, 9)) : pick(patientIds.slice(1));
+        let patientId = rand() < 0.35 ? pick(patientIds.slice(1, 9)) : pick(patientIds.slice(1));
+        for (let t = 0; t < 10 && used.has(`p|${patientId}|${start.toISO()}`); t++) patientId = pick(patientIds.slice(1));
+        if (used.has(`p|${patientId}|${start.toISO()}`)) continue;
+        used.add(`p|${patientId}|${start.toISO()}`);
         rows.push({ doctorId: d.userId, patientId, start, status, specialty: d.specialty, feeMinor: d.feeMinor });
       }
     }
@@ -159,7 +162,10 @@ async function seedHistory(mainPatientId: string) {
         const start = freeSlot(d.userId, day, HOURS);
         if (!start) continue;
         const status: AppointmentStatus = start < now.minus({ minutes: 30 }) ? 'COMPLETED' : 'CONFIRMED';
-        rows.push({ doctorId: d.userId, patientId: pick(patientIds.slice(1)), start, status, specialty: d.specialty, feeMinor: d.feeMinor });
+        const patientId = pick(patientIds.slice(1));
+        if (used.has(`p|${patientId}|${start.toISO()}`)) continue;
+        used.add(`p|${patientId}|${start.toISO()}`);
+        rows.push({ doctorId: d.userId, patientId, start, status, specialty: d.specialty, feeMinor: d.feeMinor });
       }
     }
   }

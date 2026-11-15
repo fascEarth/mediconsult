@@ -7,9 +7,9 @@ Patients find verified doctors, book a slot in their own timezone, pay, and meet
 
 | | |
 |---|---|
-| **Patients** | Search by specialty, language or name · real-time slot picker in local timezone · telemedicine consent · secure payment · video consultation in the browser · encrypted chat · e-prescription (print/PDF) · health profile · upload reports (PDF/JPG/PNG) and share per visit · reviews · data export and deletion request |
-| **Doctors** | Apply with council registration · weekly availability and time off · daily schedule · SOAP clinical notes · e-prescription builder · complete / no-show · follow-up chat for 7 days |
-| **Admin** | Verify or suspend doctors · platform stats · audit log of every PHI access |
+| **Patients** | Search by specialty, language or name · real-time slot picker in local timezone · telemedicine consent · secure payment · video consultation in the browser · encrypted chat · e-prescription (print/PDF) · health profile · **My health: log blood pressure, heart rate, sugar, weight, SpO₂ and temperature with trend charts and reference-range flags** · active medicines from prescriptions · upload reports (PDF/JPG/PNG) and share per visit · reviews · in-app notifications · data export and deletion request |
+| **Doctors** | Apply with council registration · weekly availability and time off · daily schedule · SOAP clinical notes · e-prescription builder · complete / no-show · follow-up chat for 7 days · **patient vitals during consultation** · **practice insights: monthly KPIs, 12-week consultations and earnings, busiest-hours heatmap, rating breakdown, recent reviews** · notifications |
+| **Admin** | Console with **30-day analytics** (bookings, revenue, specialty mix, booking funnel, top doctors) · verify or suspend doctors · searchable consultation list (metadata only) · audit log viewer for every PHI access |
 | **Payments** | Pluggable provider: `demo` (no money moves) or Razorpay (orders + HMAC signature verification + refunds) |
 | **Video** | Jitsi Meet embedded. Unguessable room ids are issued by the API only to participants, only in the join window (10 min before → 30 min after). Recording disabled. Self-host Jitsi with JWT for production. |
 

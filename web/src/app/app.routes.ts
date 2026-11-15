@@ -16,6 +16,8 @@ export const routes: Routes = [
   { path: 'consult/:id', canActivate: [requireRole('PATIENT', 'DOCTOR')], loadComponent: () => import('./pages/consult.page').then((m) => m.default), title: 'Video consultation · MediConsult' },
   { path: 'prescription/:id', canActivate: [requireRole('PATIENT', 'DOCTOR')], loadComponent: () => import('./pages/prescription.page').then((m) => m.default), title: 'Prescription · MediConsult' },
   { path: 'profile', canActivate: [requireRole('PATIENT')], loadComponent: () => import('./pages/profile.page').then((m) => m.default), title: 'Health profile · MediConsult' },
+  { path: 'health', canActivate: [requireRole('PATIENT')], loadComponent: () => import('./pages/health.page').then((m) => m.default), title: 'My health · MediConsult' },
+  { path: 'doctor/insights', canActivate: [requireRole('DOCTOR')], loadComponent: () => import('./pages/insights.page').then((m) => m.default), title: 'Practice insights · MediConsult' },
   { path: 'doctor/settings', canActivate: [requireRole('DOCTOR')], loadComponent: () => import('./pages/doctor-settings.page').then((m) => m.default), title: 'Practice settings · MediConsult' },
   { path: 'admin', canActivate: [requireRole('ADMIN')], loadComponent: () => import('./pages/admin.page').then((m) => m.default), title: 'Admin · MediConsult' },
   { path: '**', redirectTo: '' },
