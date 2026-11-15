@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Appointment, Prisma } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
-import { AuditService, CryptoService, MailService, PrismaService } from '../common/common.module';
+import { AuditService, CryptoService, MailService, NotificationsService, PrismaService } from '../common/common.module';
 import type { AuthUser } from '../auth/auth.guard';
 import { DoctorsService } from '../doctors/doctors.module';
 import { createPaymentProvider, PaymentConfirmation } from '../payments/payment-provider';
@@ -44,6 +44,7 @@ export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
     private readonly audit: AuditService,
     private readonly mail: MailService,
     private readonly doctors: DoctorsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -131,6 +132,9 @@ export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
     const link = `${process.env.APP_URL ?? ''}/appointments/${id}`;
     await this.mail.send(updated.patient.user.email, `Consultation confirmed · ${updated.reference}`, `Your consultation with Dr. ${updated.doctor.user.lastName} is confirmed for ${when}.\nJoin from: ${link}`);
     await this.mail.send(updated.doctor.user.email, `New consultation · ${updated.reference}`, `New consultation booked for ${when}.\nDetails: ${link}`);
+    const path = `/appointments/${id}`;
+    await this.notifications.notify(updated.patientId, 'appointment.confirmed', 'Consultation confirmed', `With Dr. ${updated.doctor.user.firstName} ${updated.doctor.user.lastName} · ${updated.reference}`, path);
+    await this.notifications.notify(updated.doctorId, 'appointment.booked', 'New consultation booked', `${updated.patient.user.firstName} ${updated.patient.user.lastName} · ${updated.reference}`, path);
     return this.present(updated, user);
   }
 
@@ -146,6 +150,8 @@ export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.payment.update({ where: { id: paid.id }, data: { status: 'REFUNDED' } });
     }
     await this.audit.log(user, 'appointment.cancel', 'appointment', id, { reason });
+    const other = user.id === appt.patientId ? appt.doctorId : appt.patientId;
+    await this.notifications.notify(other, 'appointment.cancelled', 'Consultation cancelled', `${appt.reference} was cancelled${paid ? '; any payment is being refunded' : ''}`, `/appointments/${id}`);
     return this.get(user, id);
   }
 
@@ -229,8 +235,10 @@ export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
     const appt = await this.asDoctor(user, id);
     this.assertClinicalWindow(appt);
     const dataEnc = this.crypto.encryptJson(input);
+    const existed = await this.prisma.prescription.count({ where: { appointmentId: id } });
     await this.prisma.prescription.upsert({ where: { appointmentId: id }, create: { appointmentId: id, dataEnc }, update: { dataEnc } });
     await this.audit.log(user, 'prescription.write', 'appointment', id);
+    await this.notifications.notify(appt.patientId, 'prescription.issued', existed ? 'Prescription updated' : 'Prescription ready', `For consultation ${appt.reference}`, `/prescription/${id}`);
     return this.getPrescription(user, id);
   }
 
@@ -255,6 +263,7 @@ export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
     if (Date.now() < appt.startsAt.getTime()) throw new BadRequestException('Cannot complete before the start time');
     await this.prisma.appointment.update({ where: { id }, data: { status: 'COMPLETED', completedAt: new Date() } });
     await this.audit.log(user, 'appointment.complete', 'appointment', id);
+    await this.notifications.notify(appt.patientId, 'appointment.completed', 'How was your consultation?', `Rate your consultation ${appt.reference}`, `/appointments/${id}`);
     return this.get(user, id);
   }
 
@@ -279,6 +288,7 @@ export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Already reviewed');
       throw e;
     });
+    await this.notifications.notify(appt.doctorId, 'review.received', `New ${rating}-star review`, `For consultation ${appt.reference}`, '/doctor/insights');
     return { ok: true };
   }
 
@@ -334,6 +344,8 @@ export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
       const link = `${process.env.APP_URL ?? ''}/appointments/${a.id}`;
       await this.mail.send(a.patient.user.email, `Reminder: consultation at ${a.startsAt.toUTCString()}`, `Your consultation ${a.reference} starts soon. Join here: ${link}`);
       await this.mail.send(a.doctor.user.email, `Reminder: consultation ${a.reference}`, `Starts at ${a.startsAt.toUTCString()}. ${link}`);
+      await this.notifications.notify(a.patientId, 'appointment.reminder', 'Your consultation starts soon', `${a.reference} · the room opens 10 minutes before`, `/appointments/${a.id}`);
+      await this.notifications.notify(a.doctorId, 'appointment.reminder', 'Consultation starts soon', `${a.patient.user.firstName} ${a.patient.user.lastName} · ${a.reference}`, `/appointments/${a.id}`);
       await this.prisma.appointment.update({ where: { id: a.id }, data: { reminderSentAt: new Date() } });
     }
   }

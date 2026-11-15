@@ -7,7 +7,7 @@ import type { ZodSchema } from 'zod';
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
   async onModuleDestroy() {
-    await this.$disconnect();
+    await this.$disconnect().catch(() => undefined);
   }
 }
 
@@ -86,6 +86,34 @@ export class MailService {
   }
 }
 
+/** In-app notifications. Never put clinical details in title/body: names, times and links only. */
+@Injectable()
+export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+  constructor(private readonly prisma: PrismaService) {}
+
+  async notify(userId: string, type: string, title: string, body: string, link?: string) {
+    try {
+      await this.prisma.notification.create({ data: { userId, type, title: title.slice(0, 140), body: body.slice(0, 500), link } });
+    } catch (err) {
+      this.logger.warn(`Notification for ${userId} failed: ${(err as Error).message}`);
+    }
+  }
+
+  async list(userId: string) {
+    const [items, unread] = await Promise.all([
+      this.prisma.notification.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 30 }),
+      this.prisma.notification.count({ where: { userId, readAt: null } }),
+    ]);
+    return { unread, items: items.map(({ userId: _u, ...n }) => n) };
+  }
+
+  async markRead(userId: string, ids?: string[]) {
+    await this.prisma.notification.updateMany({ where: { userId, readAt: null, ...(ids?.length ? { id: { in: ids } } : {}) }, data: { readAt: new Date() } });
+    return this.list(userId);
+  }
+}
+
 export class ZodPipe<T> implements PipeTransform<unknown, T> {
   constructor(private readonly schema: ZodSchema<T>) {}
   transform(value: unknown): T {
@@ -96,5 +124,8 @@ export class ZodPipe<T> implements PipeTransform<unknown, T> {
 }
 
 @Global()
-@Module({ providers: [PrismaService, CryptoService, AuditService, MailService], exports: [PrismaService, CryptoService, AuditService, MailService] })
+@Module({
+  providers: [PrismaService, CryptoService, AuditService, MailService, NotificationsService],
+  exports: [PrismaService, CryptoService, AuditService, MailService, NotificationsService],
+})
 export class CommonModule {}

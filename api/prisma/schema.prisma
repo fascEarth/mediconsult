@@ -54,9 +54,10 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  patient  PatientProfile?
-  doctor   DoctorProfile?
-  sessions Session[]
+  patient       PatientProfile?
+  doctor        DoctorProfile?
+  sessions      Session[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -90,6 +91,7 @@ model PatientProfile {
   user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   appointments Appointment[]
   records      MedicalRecord[]
+  vitals       Vital[]
 
   @@map("patient_profiles")
 }
@@ -303,4 +305,36 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([actorId, createdAt])
   @@map("audit_logs")
+}
+
+/// In-app notifications. Titles/bodies carry names and times only, never clinical details.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// Patient-logged vital signs. The reading itself is PHI and stored encrypted.
+model Vital {
+  id         String   @id @default(cuid())
+  patientId  String
+  type       String   // BP | HR | WEIGHT | GLUCOSE | TEMP | SPO2
+  valueEnc   String
+  recordedAt DateTime
+  createdAt  DateTime @default(now())
+
+  patient PatientProfile @relation(fields: [patientId], references: [userId], onDelete: Cascade)
+
+  @@index([patientId, type, recordedAt])
+  @@map("vitals")
 }

@@ -10,6 +10,8 @@ import { DoctorsModule } from './doctors/doctors.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { PatientsModule } from './patients/patients.module';
 import { AdminModule } from './admin/admin.module';
+import { InsightsModule } from './insights/insights.module';
+import { WellnessModule } from './wellness/wellness.module';
 
 @Controller()
 class MetaController {
@@ -41,6 +43,8 @@ class MetaController {
     JwtModule.register({ global: true }),
     CommonModule,
     AuthModule,
+    InsightsModule,
+    WellnessModule,
     DoctorsModule,
     AppointmentsModule,
     PatientsModule,

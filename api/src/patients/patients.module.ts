@@ -90,14 +90,16 @@ export class PatientsService {
 
   /** Data portability: everything we hold about the patient, decrypted. */
   async export(user: AuthUser) {
-    const [profile, records, appointments] = await Promise.all([
+    const [profile, records, appointments, vitals] = await Promise.all([
       this.profile(user),
       this.records(user),
       this.prisma.appointment.findMany({ where: { patientId: user.id }, include: { prescription: true, doctor: { include: { user: true } } } }),
+      this.prisma.vital.findMany({ where: { patientId: user.id }, orderBy: { recordedAt: 'asc' } }),
     ]);
     await this.audit.log(user, 'patient.export', 'patient', user.id);
     return {
       exportedAt: new Date(), profile, records,
+      vitals: vitals.map((v) => ({ type: v.type, recordedAt: v.recordedAt, value: this.crypto.decryptJson(v.valueEnc) })),
       appointments: appointments.map((a) => ({
         reference: a.reference, startsAt: a.startsAt, status: a.status, reason: a.reason,
         doctor: `Dr. ${a.doctor.user.firstName} ${a.doctor.user.lastName}`,
