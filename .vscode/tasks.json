@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "Setup (install + api/.env)", "type": "shell", "command": "npm run setup", "problemMatcher": [] },
+    { "label": "Database: start Postgres + Mailpit (Docker)", "type": "shell", "command": "docker compose up -d", "problemMatcher": [] },
+    { "label": "Database: create tables + demo data", "type": "shell", "command": "npm run db:setup", "problemMatcher": [] },
+    {
+      "label": "Run API", "type": "shell", "command": "npm run start:dev -w api", "isBackground": true,
+      "problemMatcher": { "pattern": { "regexp": "^x$" }, "background": { "activelyBegins": true, "beginsPattern": "Starting compilation|Nest application", "endsPattern": "Nest application successfully started|Found 0 errors" } }
+    },
+    {
+      "label": "Run Web", "type": "shell", "command": "npm run start -w web", "isBackground": true,
+      "problemMatcher": { "pattern": { "regexp": "^x$" }, "background": { "activelyBegins": true, "beginsPattern": "Building|Initial chunk", "endsPattern": "Local:|Application bundle generation complete" } }
+    },
+    {
+      "label": "Run Web (demo, no backend)", "type": "shell", "command": "npm run start -w web -- --configuration demo", "isBackground": true,
+      "problemMatcher": { "pattern": { "regexp": "^x$" }, "background": { "activelyBegins": true, "beginsPattern": "Building|Initial chunk", "endsPattern": "Local:|Application bundle generation complete" } }
+    },
+    { "label": "Run full stack", "dependsOn": ["Run API", "Run Web"], "problemMatcher": [] }
+  ]
+}

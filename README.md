@@ -72,3 +72,14 @@ web/   Angular 20 standalone app (signals, lazy routes, responsive, print-ready 
 SMS/WhatsApp reminders · Stripe for international payments · self-hosted Jitsi with JWT · ABDM/ABHA integration (India) · FHIR export · lab and pharmacy partners · doctor payouts · multi-clinic tenancy on Nexus Core.
 
 © Fascinora. All rights reserved.
+
+## Run locally in VS Code
+
+1. Open this folder in VS Code and run `npm run setup` in the terminal (installs packages, creates `api/.env`).
+2. **Quickest — no database needed:** Run and Debug (Ctrl+Shift+D) → **MediConsult: Demo in Chrome (no database)** → F5.
+   Opens http://localhost:4300 with the in-browser demo (sample doctors, booking, payment, chat).
+3. **Full stack (real API + PostgreSQL):**
+   - Postgres: `docker compose up -d` (port 5433), or point `DATABASE_URL` in `api/.env` at your own Postgres.
+   - `npm run db:setup` (tables, constraints, demo data).
+   - Run and Debug → **MediConsult: Full stack in Chrome** → F5. Or `npm run dev`.
+   - Logins: patient@mediconsult.demo / Patient@12345 · doctor@mediconsult.demo / Doctor@12345 · admin@mediconsult.demo / Admin@12345

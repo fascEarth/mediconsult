@@ -2,8 +2,11 @@
   "name": "mediconsult",
   "version": "0.1.0",
   "private": true,
-  "description": "MediConsult — secure online doctor consultation platform by Fascinora",
-  "workspaces": ["api", "web"],
+  "description": "MediConsult \u2014 secure online doctor consultation platform by Fascinora",
+  "workspaces": [
+    "api",
+    "web"
+  ],
   "scripts": {
     "infra:up": "docker compose up -d",
     "db:migrate": "npm run db:migrate -w api && npm run db:constraints -w api",
@@ -11,7 +14,16 @@
     "dev:api": "npm run start:dev -w api",
     "dev:web": "npm run start -w web",
     "build": "npm run build -w api && npm run build -w web",
-    "test": "npm test -w api"
+    "test": "npm test -w api",
+    "setup": "npm install && node scripts/setup-local.mjs",
+    "db:setup": "npm run db:push -w api && npm run db:constraints -w api && npm run db:seed -w api",
+    "demo": "npm run start -w web -- --configuration demo --open",
+    "dev": "concurrently -n api,web -c blue,green \"npm run start:dev -w api\" \"npm run start -w web -- --open\""
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
 }
